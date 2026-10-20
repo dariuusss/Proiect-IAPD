@@ -1,0 +1,10 @@
+__pycache__/
+*.pyc
+.ipynb_checkpoints/
+# modelele antrenate se pot regenera cu analysis/models.py
+analysis/results/*.joblib
+
+# datele brute nu intră în repo (prea mari, se regenerează cu scripturile din extraction/);
+# păstrăm doar README-ul care explică de unde vin
+data/raw/*
+!data/raw/README.md
