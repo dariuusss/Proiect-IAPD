@@ -33,6 +33,17 @@ def get_json(url, params=None, delay=1.0, max_retries=5):
     return None
 
 
+def redirects_away(url, params=None):
+    """True dacă endpoint-ul răspunde cu o redirecționare (3xx). Steam trimite la prima pagină a
+    magazinului endpoint-urile pe care nu le mai servește (așa s-a întâmplat cu /appreviews în nov. 2026);
+    fără verificarea asta, get_json ar reîncerca minute întregi pentru fiecare joc."""
+    try:
+        r = _session.get(url, params=params, timeout=30, allow_redirects=False)
+        return 300 <= r.status_code < 400
+    except requests.RequestException:
+        return False
+
+
 def read_jsonl(path: Path):
     if not path.exists():
         return []

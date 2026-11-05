@@ -13,7 +13,7 @@ import random
 from datetime import date
 
 from config import DELAY_REVIEWS, RAW_DIR, RELEASE_START, SEARCH_INDEX, SHUFFLE_SEED
-from http_utils import append_jsonl, done_ids, get_json, read_jsonl
+from http_utils import append_jsonl, done_ids, get_json, read_jsonl, redirects_away
 
 TIMELINES = RAW_DIR / "review_timelines.jsonl"
 OLDEST_ALLOWED = date(2025, 9, 30)    # jocuri cu cel puțin ~1 an de istoric
@@ -51,6 +51,10 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--n", type=int, default=200)
     args = parser.parse_args()
+    if redirects_away("https://store.steampowered.com/appreviews/730", {"json": 1}):
+        print("Endpoint-ul Steam /appreviews nu mai răspunde (redirecționează la prima pagină), "
+              "deci istoricul recenziilor nu poate fi descărcat. Oprire.")
+        return
 
     done = done_ids(TIMELINES)
     todo = [r for r in sample(args.n) if r["appid"] not in done]

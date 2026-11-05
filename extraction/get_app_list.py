@@ -12,7 +12,7 @@ Rulare:  python extraction/get_app_list.py
 import html
 import json
 import re
-from datetime import datetime
+from datetime import datetime, timezone
 
 from config import (COUNTRY, DELAY_SEARCH, LANGUAGE, RAW_DIR, RELEASE_START,
                     SEARCH_INDEX, TAG_NAMES)
@@ -97,6 +97,8 @@ def main():
                 state["old_streak"] = 0
             if row["appid"] not in seen:
                 seen.add(row["appid"])
+                # momentul descărcării: sumarul recenziilor de aici e și ținta (preprocess.py)
+                row["fetched_at"] = datetime.now(timezone.utc).isoformat(timespec="seconds")
                 append_jsonl(SEARCH_INDEX, row)
                 new += 1
 

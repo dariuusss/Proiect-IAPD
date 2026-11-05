@@ -1,7 +1,10 @@
 """Pasul 3: din fișierele JSONL brute -> un singur CSV curat, cu un rând per joc.
 
 Rulare:  python extraction/preprocess.py
-Rezultat: data/final/steam_clean.csv  +  data/final/feature_dictionary.md
+Rezultat: data/final/steam_clean.csv
+
+Ținta vine din reviews.jsonl dacă există, altfel din sumarul recenziilor din search_index.jsonl
+(endpoint-ul Steam /appreviews a fost retras în noiembrie 2026, vezi build_target).
 """
 import html
 import json
@@ -49,9 +52,55 @@ def slug(name):
     return re.sub(r"[^a-z0-9]+", "_", name.lower()).strip("_")
 
 
-def build_row(details, reviews, spy, search_row, tag_names):
+def steam_score_desc(ratio, total):
+    """Eticheta de recenzii afișată de Steam, după pragurile publice ale Steam."""
+    if ratio is None or total < 10:
+        return None
+    pct = ratio * 100
+    if pct >= 80:
+        if pct >= 95 and total >= 500:
+            return "Overwhelmingly Positive"
+        return "Very Positive" if total >= 50 else "Positive"
+    if pct >= 70:
+        return "Mostly Positive"
+    if pct >= 40:
+        return "Mixed"
+    if pct >= 20:
+        return "Mostly Negative"
+    if total >= 500:
+        return "Overwhelmingly Negative"
+    return "Very Negative" if total >= 50 else "Negative"
+
+
+def build_target(reviews, search_row, search_date):
+    """Ținta (recenziile) unui joc și data la care a fost măsurată.
+
+    Sursa preferată este reviews.jsonl (Reviews API: număr exact de recenzii pozitive/negative).
+    În noiembrie 2026 Steam a retras endpoint-ul /appreviews, așa că sursa de rezervă este sumarul
+    din căutare, salvat deja în search_index.jsonl: procentul afișat de Steam (rotunjit la întreg)
+    și numărul total de recenzii. Rotunjirea introduce o eroare de cel mult 0,5 puncte procentuale."""
+    if reviews is not None:
+        s = reviews["summary"]
+        total = s.get("total_reviews", 0)
+        ratio = s.get("total_positive", 0) / total if total else None
+        return {"total_positive": s.get("total_positive", 0), "total_negative": s.get("total_negative", 0),
+                "total_reviews": total, "review_score_desc": s.get("review_score_desc"),
+                "positive_ratio": ratio, "target_source": "reviews_api",
+                "measured_on": datetime.fromisoformat(reviews["fetched_at"]).date()}
+    if search_row and search_row.get("search_review_pct") is not None:
+        total = search_row["search_review_count"]
+        ratio = search_row["search_review_pct"] / 100
+        positive = round(ratio * total)
+        fetched = search_row.get("fetched_at")
+        return {"total_positive": positive, "total_negative": total - positive, "total_reviews": total,
+                "review_score_desc": steam_score_desc(ratio, total), "positive_ratio": ratio,
+                "target_source": "search_summary",
+                "measured_on": datetime.fromisoformat(fetched).date() if fetched else search_date}
+    return None
+
+
+def build_row(details, target, spy, search_row, tag_names):
     d = details["data"]
-    s = reviews["summary"]
     release = parse_release(d.get("release_date", {}).get("date"))
     price = d.get("price_overview") or {}
     langs, full_audio_en = parse_languages(d.get("supported_languages"))
@@ -70,7 +119,6 @@ def build_row(details, reviews, spy, search_row, tag_names):
     except ValueError:
         required_age = 0
 
-    total = s.get("total_reviews", 0)
     return {
         "appid": details["appid"],
         "name": d.get("name"),
@@ -108,14 +156,11 @@ def build_row(details, reviews, spy, search_row, tag_names):
         "categories": "|".join(categories),
         "tags": "|".join(tags),
         "short_description": strip_html(d.get("short_description")),
-        # ținta
-        "total_positive": s.get("total_positive", 0),
-        "total_negative": s.get("total_negative", 0),
-        "total_reviews": total,
-        "review_score_desc": s.get("review_score_desc"),
-        "positive_ratio": s.get("total_positive", 0) / total if total else None,
-        # vârsta jocului când i-am descărcat recenziile; NU e feature, doar pentru controlul stabilității țintei
-        "game_age_days": (datetime.fromisoformat(reviews["fetched_at"]).date() - release.date()).days if release else None,
+        # ținta (target_source spune de unde vine: reviews_api sau search_summary)
+        **{k: v for k, v in target.items() if k != "measured_on"},
+        # vârsta jocului când i-am măsurat recenziile; NU e feature, doar pentru controlul stabilității țintei
+        "game_age_days": (target["measured_on"] - release.date()).days
+                         if release and target["measured_on"] else None,
     }
 
 
@@ -162,6 +207,8 @@ def main():
     search = {r["appid"]: r for r in read_jsonl(SEARCH_INDEX)}
     tag_names = json.loads(TAG_NAMES.read_text(encoding="utf-8")) if TAG_NAMES.exists() else {}
     developers = {r["developer"]: r["games"] for r in read_jsonl(DEVELOPERS) if r.get("success")}
+    # Rândurile vechi din search_index nu au fetched_at; pentru ele, data căutării = data ultimei scrieri în fișier
+    search_date = datetime.fromtimestamp(SEARCH_INDEX.stat().st_mtime).date() if SEARCH_INDEX.exists() else None
     print(f"appdetails={len(details)}  reviews={len(reviews)}  steamspy={len(spy)}  search={len(search)}")
 
     rows, dropped = [], {"not_game": 0, "no_reviews": 0, "out_of_window": 0}
@@ -169,10 +216,11 @@ def main():
         if det["data"].get("type") != "game":
             dropped["not_game"] += 1
             continue
-        if appid not in reviews:
+        target = build_target(reviews.get(appid), search.get(appid), search_date)
+        if target is None:
             dropped["no_reviews"] += 1
             continue
-        row = build_row(det, reviews[appid], spy.get(appid), search.get(appid), tag_names)
+        row = build_row(det, target, spy.get(appid), search.get(appid), tag_names)
         # Vârsta se măsoară la momentul descărcării recenziilor, nu față de azi:
         # contează câte zile avusese jocul ca să-și stabilizeze scorul când l-am măsurat.
         if (not row["release_date"] or row["release_date"] < RELEASE_START.isoformat()
@@ -186,6 +234,7 @@ def main():
     print(f"Eliminate: {dropped}")
 
     df = pd.DataFrame(rows)
+    print(f"Sursa țintei: {df['target_source'].value_counts().to_dict()}")
     df = add_developer_history(df, developers)
     df = add_one_hot(df, "genres", "genre", min_share=MIN_GENRE_SHARE)
     df = add_one_hot(df, "categories", "cat", min_share=MIN_CATEGORY_SHARE)

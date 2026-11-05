@@ -21,7 +21,7 @@ from config import (APPDETAILS, COUNTRY, DELAY_REVIEWS, DELAY_SEARCH, DELAY_STEA
                     DELAY_STORE, DEVELOPERS, LANGUAGE, MIN_REVIEWS_CRAWL, RELEASE_END,
                     RELEASE_START, REVIEWS, SEARCH_INDEX, SHUFFLE_SEED, STEAMSPY)
 from get_app_list import ROW_RE, parse_row
-from http_utils import append_jsonl, done_ids, get_json, read_jsonl
+from http_utils import append_jsonl, done_ids, get_json, read_jsonl, redirects_away
 
 # Câmpuri mari din appdetails de care nu avem nevoie (economisesc spațiu pe disc)
 DROP_FIELDS = {"pc_requirements", "mac_requirements", "linux_requirements", "background",
@@ -126,6 +126,11 @@ def main():
     args = parser.parse_args()
     if args.stage == "developers":
         return run_developers(args.limit)
+    if args.stage == "reviews" and redirects_away("https://store.steampowered.com/appreviews/730", {"json": 1}):
+        print("[reviews] Endpoint-ul Steam /appreviews nu mai răspunde (redirecționează la prima pagină).\n"
+              "          Etapa nu e necesară: preprocess.py ia ținta din search_index.jsonl\n"
+              "          (procentul și numărul de recenzii afișate de Steam). Oprire.")
+        return
 
     out_path, fetch = STAGES[args.stage]
     ids = candidates()
