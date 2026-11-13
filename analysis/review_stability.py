@@ -1,14 +1,3 @@
-"""Cât de diferit e scorul unui joc la N zile după lansare față de scorul lui actual?
-
-Folosește data/raw/review_timelines.jsonl (extraction/crawl_review_timelines.py).
-Pentru fiecare joc și fiecare vârstă d calculăm:
-  - ratio_d     = recenzii pozitive / total, numărând doar recenziile scrise până la ziua d
-  - |ratio_d - ratio_final|  (ratio_final = toate recenziile de azi, jocul având ≥ 1 an)
-  - ce fracție din recenziile de azi existau deja la ziua d
-
-Rulare:  python analysis/review_stability.py
-Rezultat: analysis/results/review_stability.md, analysis/figures/eda_00_review_stability.png
-"""
 import json
 from datetime import datetime, timezone
 
@@ -20,8 +9,8 @@ from common import BLUE, ORANGE, RES_DIR, ROOT, TEXT_2, save, set_style
 
 TIMELINES = ROOT / "data" / "raw" / "review_timelines.jsonl"
 AGES = [7, 14, 30, 60, 90, 120, 180, 365]
-MIN_REVIEWS_AT_AGE = 10   # un scor din mai puțin de 10 recenzii nu se compară
-MIN_AGE_DAYS = 120        # pragul ales pe baza acestei analize (extraction/config.py)
+MIN_REVIEWS_AT_AGE = 10  
+MIN_AGE_DAYS = 120        
 
 
 def main():

@@ -1,12 +1,3 @@
-"""Analiza erorilor pentru cel mai bun model de regresie (salvat de models.py).
-
-- unde greșește modelul: pe genuri, intervale de preț, număr de recenzii;
-- ce feature-uri contează (SHAP);
-- exemple concrete de jocuri prezise foarte greșit.
-
-Rulare:  python analysis/error_analysis.py   (după models.py)
-Rezultat: analysis/results/error_analysis.md, analysis/figures/err_*.png
-"""
 import joblib
 import matplotlib.pyplot as plt
 import numpy as np
@@ -49,7 +40,7 @@ def main():
     md(f"MAE total pe test: **{preds['abs_err'].mean():.4f}**, bias mediu: {preds['err'].mean():+.4f}")
     md()
 
-    # --- pe intervale de preț, de recenzii și de țintă
+    
     preds["price_bucket"] = pd.cut(preds["price_eur"], [-0.01, 0, 5, 10, 20, 30, 1000],
                                    labels=["gratuit", "≤5€", "5-10€", "10-20€", "20-30€", ">30€"])
     preds["reviews_bucket"] = pd.cut(preds["total_reviews"], [0, 50, 100, 500, 2000, 10**9],
@@ -66,7 +57,7 @@ def main():
         md(g.to_markdown(floatfmt=".4f"))
         md()
 
-    # --- pe genuri (un joc poate avea mai multe genuri)
+    
     exploded = preds.assign(genre=preds["genres"].fillna("").str.split("|")).explode("genre")
     by_genre = error_by(exploded[exploded["genre"] != ""], "genre")
     by_genre = by_genre[by_genre["n"] >= 20].sort_values("MAE", ascending=False)
@@ -88,7 +79,7 @@ def main():
     ax.grid(axis="y", visible=False)
     save(fig, "err_02_by_genre")
 
-    # --- cele mai mari erori
+    
     cols = ["name", "genres", "price_eur", "total_reviews", "positive_ratio", "pred_ratio", "err"]
     md("## Cele mai mari supraestimări (modelul credea că va fi bine primit)")
     md(preds.sort_values("err", ascending=False).head(10)[cols].to_markdown(index=False, floatfmt=".3f"))
@@ -97,7 +88,7 @@ def main():
     md(preds.sort_values("err").head(10)[cols].to_markdown(index=False, floatfmt=".3f"))
     md()
 
-    # --- SHAP: importanța feature-urilor (pe setul de test)
+    
     df = load()
     features = bundle["features"]
     model = bundle["model"]

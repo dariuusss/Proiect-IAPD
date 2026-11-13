@@ -1,13 +1,3 @@
-"""Pas auxiliar: cât de repede se stabilizează scorul unui joc după lansare?
-
-Pentru un eșantion de jocuri lansate de cel puțin un an descărcăm TOATE recenziile
-(doar data și dacă e pozitivă), ca să putem reconstrui scorul pe care l-ar fi avut
-jocul la 7, 30, 60, 90... zile după lansare. Rezultatul justifică empiric câte zile
-trebuie să fi trecut de la lansare ca ținta să fie stabilă (RELEASE_END din config.py).
-
-Rulare:  python extraction/crawl_review_timelines.py [--n 200]
-Rezultat: data/raw/review_timelines.jsonl
-"""
 import argparse
 import random
 from datetime import date
@@ -16,8 +6,8 @@ from config import DELAY_REVIEWS, RAW_DIR, RELEASE_START, SEARCH_INDEX, SHUFFLE_
 from http_utils import append_jsonl, done_ids, get_json, read_jsonl, redirects_away
 
 TIMELINES = RAW_DIR / "review_timelines.jsonl"
-OLDEST_ALLOWED = date(2025, 9, 30)    # jocuri cu cel puțin ~1 an de istoric
-MIN_REVIEWS, MAX_REVIEWS = 20, 3000   # peste 3000 ar fi prea multe pagini de descărcat
+OLDEST_ALLOWED = date(2025, 9, 30)    
+MIN_REVIEWS, MAX_REVIEWS = 20, 3000   
 MAX_PAGES = 40
 
 
@@ -31,7 +21,6 @@ def sample(n):
 
 
 def fetch_timeline(appid):
-    """Paginează prin toate recenziile (100 pe pagină) folosind cursorul API-ului."""
     reviews, cursor = [], "*"
     for _ in range(MAX_PAGES):
         data = get_json(f"https://store.steampowered.com/appreviews/{appid}",
@@ -63,7 +52,7 @@ def main():
         reviews = fetch_timeline(row["appid"])
         if reviews is None:
             continue
-        # deduplicare: paginarea poate întoarce aceeași recenzie de două ori
+        
         reviews = sorted({tuple(r) for r in reviews})
         append_jsonl(TIMELINES, {"appid": row["appid"], "name": row["name"],
                                  "release_date": row["release_date"], "reviews": reviews})

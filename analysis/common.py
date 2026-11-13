@@ -1,8 +1,7 @@
-"""Funcții comune pentru EDA și modele: încărcarea datelor și lista de feature-uri."""
 from pathlib import Path
 
 import matplotlib
-matplotlib.use("Agg")  # salvăm grafice în fișiere, fără fereastră
+matplotlib.use("Agg")  
 import matplotlib.pyplot as plt
 import pandas as pd
 from cycler import cycler
@@ -14,7 +13,7 @@ RES_DIR = ROOT / "analysis" / "results"
 FIG_DIR.mkdir(parents=True, exist_ok=True)
 RES_DIR.mkdir(parents=True, exist_ok=True)
 
-# Pragul final de recenzii pentru modelare (ales după EDA, vezi docs/PASI_REALIZARE.md)
+
 MIN_REVIEWS_MODEL = 20
 RANDOM_STATE = 42
 
@@ -29,12 +28,8 @@ NUMERIC_FEATURES = [
     "dev_prior_games", "dev_prior_rated_games", "dev_has_track_record", "dev_prior_mean_score",
 ]
 
-# Feature-uri pe care le vedem așa cum sunt AZI, nu cum erau la lansare, și care pot fi influențate
-# chiar de succesul jocului (un joc reușit primește DLC-uri și traduceri după lansare).
-# models.py rulează un experiment de ablație fără ele, ca să vedem cât din performanță vine de aici.
 POST_RELEASE_MUTABLE = ["n_dlc", "n_languages", "has_full_audio_en", "n_achievements", "is_early_access"]
 
-# Coloane care NU au voie să intre în model (ținta sau derivate din ea -> data leakage)
 LEAKY = {"total_positive", "total_negative", "total_reviews", "review_score_desc",
          "positive_ratio", "is_successful", "game_age_days"}
 
@@ -47,7 +42,6 @@ def load(min_reviews=MIN_REVIEWS_MODEL):
 
 def feature_columns(df):
     one_hot = [c for c in df.columns if c.startswith(("genre_", "cat_", "tag_"))]
-    # coloanele constante (ex. has_windows = 1 peste tot) nu aduc informație
     cols = [c for c in NUMERIC_FEATURES + one_hot if df[c].nunique() > 1]
     assert not LEAKY & set(cols)
     return cols
@@ -57,7 +51,6 @@ def pretty(col):
     return col.replace("_", " ")
 
 
-# --- Stil grafice (paleta validată: albastru = seria principală, portocaliu = contrast) ---
 BLUE, ORANGE, AQUA, GRAY = "#2a78d6", "#eb6834", "#1baf7a", "#8a8984"
 TEXT, TEXT_2 = "#0b0b0b", "#52514e"
 

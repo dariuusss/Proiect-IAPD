@@ -1,14 +1,3 @@
-"""Modele de predicție: regresie (positive_ratio) și clasificare (is_successful).
-
-Pentru fiecare sarcină comparăm, pe ACELAȘI split 80/20:
-  baseline naiv -> model liniar -> Random Forest -> XGBoost -> LightGBM
-  + un experiment cu text (TF-IDF pe descrierea scurtă).
-Hiperparametrii se aleg cu 5-fold cross-validation DOAR pe setul de antrenare.
-La final: un split temporal (antrenare 2024, testare 2025-2026) pentru cel mai bun model.
-
-Rulare:  python analysis/models.py
-Rezultat: analysis/results/*.csv, models_summary.md, best_*.joblib; analysis/figures/model_*.png
-"""
 import json
 import warnings
 
@@ -34,13 +23,11 @@ from common import (BLUE, ORANGE, POST_RELEASE_MUTABLE, RANDOM_STATE, RES_DIR, T
                     feature_columns, load, save, set_style)
 
 warnings.filterwarnings("ignore", category=UserWarning)
-N_ITER = 20   # combinații de hiperparametri încercate per model
+N_ITER = 20   
 CV = 5
 
 
 def search(estimator, grid, X, y, scoring):
-    """Alege hiperparametrii cu 5-fold CV pe train. Întoarce și scorul CV (medie, deviație standard)
-    al combinației alese: cu un set de test mic, el arată cât de mult variază rezultatele."""
     sign = -1 if scoring.startswith("neg_") else 1
     if not grid:
         scores = cross_val_score(estimator, X, y, cv=CV, scoring=scoring) * sign
@@ -100,8 +87,7 @@ def reg_metrics(y, p):
 
 def clf_metrics(y, proba, threshold=0.5):
     pred = (proba >= threshold).astype(int)
-    # F1 macro (media F1 pe cele două clase) și balanced accuracy: F1 doar pe clasa pozitivă ar
-    # favoriza modelul care prezice „succes” pentru toată lumea, fiindcă succesul e clasa majoritară.
+    
     return {"F1_macro": f1_score(y, pred, average="macro", zero_division=0),
             "ROC_AUC": roc_auc_score(y, proba) if len(set(proba)) > 1 else 0.5,
             "Balanced_acc": balanced_accuracy_score(y, pred)}
@@ -121,7 +107,7 @@ def run_regression(X_tr, X_te, y_tr, y_te, df_tr, df_te):
         results.append({"model": name, **reg_metrics(y_te, p), "CV_MAE": cv_m, "CV_MAE_std": cv_s})
         preds[name], fitted[name], params[name] = p, model, best
 
-    # Experiment text: doar TF-IDF, apoi TF-IDF + feature-urile tabulare (scalate)
+    
     T_tr, T_te = text_features(df_tr["short_description"], df_te["short_description"])
     scaler = StandardScaler().fit(X_tr)
     for name, A_tr, A_te in [
@@ -194,9 +180,7 @@ def temporal_split(df, X, best_reg_name, best_clf_name, reg_fitted, clf_fitted):
 
 
 def ablation(X_tr, X_te, df_tr, df_te, features, best_reg_name, best_clf_name, reg_fitted, clf_fitted):
-    """Reantrenează cele mai bune modele (aceiași hiperparametri) fără feature-urile care pot fi
-    modificate după lansare ca urmare a succesului (DLC, traduceri...). Dacă performanța scade
-    mult, o parte din „predicție” era de fapt informație din viitor."""
+    
     from sklearn.base import clone
     keep = [i for i, f in enumerate(features) if f not in POST_RELEASE_MUTABLE]
     rows = []
@@ -221,7 +205,7 @@ def main():
     df_tr, df_te = df.iloc[idx_tr], df.iloc[idx_te]
     X_tr, X_te = X[idx_tr], X[idx_te]
 
-    # ---------- Regresie ----------
+    
     y_tr, y_te = df_tr["positive_ratio"].values, df_te["positive_ratio"].values
     reg_res, reg_preds, reg_fitted, reg_params = run_regression(X_tr, X_te, y_tr, y_te, df_tr, df_te)
     reg_res.to_csv(RES_DIR / "regression_results.csv", index=False)
@@ -237,7 +221,7 @@ def main():
     ax.set_title(f"{best_reg}: real vs. prezis")
     save(fig, "model_03_regression_scatter")
 
-    # ---------- Clasificare ----------
+    
     c_tr, c_te = df_tr["is_successful"].values, df_te["is_successful"].values
     clf_res, clf_probas, clf_fitted, clf_params = run_classification(X_tr, X_te, c_tr, c_te, df_tr, df_te)
     clf_res.to_csv(RES_DIR / "classification_results.csv", index=False)
@@ -262,7 +246,7 @@ def main():
     axes[1].set_title(f"Matricea de confuzie: {best_clf}")
     save(fig, "model_06_classification_roc_cm")
 
-    # ---------- Split temporal ----------
+    
     print("  split temporal 2024 -> 2025-2026")
     temporal = temporal_split(df, X, best_reg, best_clf, reg_fitted, clf_fitted)
     temporal.to_csv(RES_DIR / "temporal_split_results.csv", index=False)
@@ -271,7 +255,7 @@ def main():
     abl = ablation(X_tr, X_te, df_tr, df_te, features, best_reg, best_clf, reg_fitted, clf_fitted)
     abl.to_csv(RES_DIR / "ablation_results.csv", index=False)
 
-    # ---------- Salvare pentru analiza erorilor ----------
+    
     joblib.dump({"model": reg_fitted[best_reg], "name": best_reg, "features": features}, RES_DIR / "best_regressor.joblib")
     joblib.dump({"model": clf_fitted[best_clf], "name": best_clf, "features": features}, RES_DIR / "best_classifier.joblib")
     preds = df_te[["appid", "name", "genres", "tags", "price_eur", "total_reviews", "release_year",

@@ -1,8 +1,3 @@
-"""Analiza exploratorie (EDA): statistici descriptive + grafice.
-
-Rulare:  python analysis/eda.py
-Rezultat: analysis/figures/eda_*.png  și  analysis/results/eda_summary.md
-"""
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
@@ -10,7 +5,7 @@ import pandas as pd
 from common import (BLUE, MIN_REVIEWS_MODEL, NUMERIC_FEATURES, ORANGE, RES_DIR,
                     TEXT_2, load, pretty, save, set_style)
 
-lines = []  # conținutul raportului markdown
+lines = [] 
 
 
 def md(text=""):
@@ -23,7 +18,7 @@ def table(df, floatfmt=".3f"):
 
 
 def review_threshold(df_all):
-    """Câte jocuri rămân pentru diverse praguri minime de recenzii -> alegerea pragului."""
+    
     thresholds = [20, 30, 50, 100, 200, 500, 1000]
     rows = []
     for t in thresholds:

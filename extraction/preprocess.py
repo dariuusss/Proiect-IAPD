@@ -1,24 +1,18 @@
-"""Pasul 3: din fișierele JSONL brute -> un singur CSV curat, cu un rând per joc.
-
-Rulare:  python extraction/preprocess.py
-Rezultat: data/final/steam_clean.csv
-
-Ținta vine din reviews.jsonl dacă există, altfel din sumarul recenziilor din search_index.jsonl
-(endpoint-ul Steam /appreviews a fost retras în noiembrie 2026, vezi build_target).
-"""
+import argparse
 import html
 import json
 import re
 from datetime import datetime
+from pathlib import Path
 
 import pandas as pd
 
-from config import (APPDETAILS, CLEAN_CSV, FINAL_DIR, MIN_AGE_DAYS, MIN_REVIEWS_CRAWL,
+from config import (APPDETAILS, CLEAN_CSV, MIN_AGE_DAYS, MIN_REVIEWS_CRAWL,
                     DEVELOPERS, RELEASE_START, REVIEWS, SEARCH_INDEX, STEAMSPY, TAG_NAMES)
 from http_utils import read_jsonl
 
-TOP_TAGS = 40           # câte tag-uri devin coloane one-hot
-MIN_GENRE_SHARE = 0.01  # genurile/categoriile mai rare de 1% nu primesc coloană proprie
+TOP_TAGS = 40           
+MIN_GENRE_SHARE = 0.01  
 MIN_CATEGORY_SHARE = 0.05
 
 TAG_RE = re.compile(r"<[^>]+>")
@@ -39,8 +33,6 @@ def parse_release(text):
 
 
 def parse_languages(raw):
-    """'English<strong>*</strong>, French<br><strong>*</strong>languages with full audio support'
-    -> (listă limbi, are audio complet în engleză)"""
     raw = (raw or "").split("<br>")[0]
     langs = [strip_html(x).replace("*", "").strip() for x in raw.split(",")]
     langs = [l for l in langs if l]
@@ -53,7 +45,6 @@ def slug(name):
 
 
 def steam_score_desc(ratio, total):
-    """Eticheta de recenzii afișată de Steam, după pragurile publice ale Steam."""
     if ratio is None or total < 10:
         return None
     pct = ratio * 100
@@ -73,12 +64,7 @@ def steam_score_desc(ratio, total):
 
 
 def build_target(reviews, search_row, search_date):
-    """Ținta (recenziile) unui joc și data la care a fost măsurată.
-
-    Sursa preferată este reviews.jsonl (Reviews API: număr exact de recenzii pozitive/negative).
-    În noiembrie 2026 Steam a retras endpoint-ul /appreviews, așa că sursa de rezervă este sumarul
-    din căutare, salvat deja în search_index.jsonl: procentul afișat de Steam (rotunjit la întreg)
-    și numărul total de recenzii. Rotunjirea introduce o eroare de cel mult 0,5 puncte procentuale."""
+    
     if reviews is not None:
         s = reviews["summary"]
         total = s.get("total_reviews", 0)
@@ -109,8 +95,7 @@ def build_row(details, target, spy, search_row, tag_names):
     developers = d.get("developers") or []
     publishers = d.get("publishers") or []
     description = strip_html(d.get("detailed_description"))
-    # Tag-urile din Store (cele afișate pe pagina jocului, ~7 per joc) sunt sursa principală:
-    # SteamSpy are tag-uri doar pentru o mică parte din jocurile noi.
+    
     tags = [tag_names.get(str(t), f"tag{t}") for t in (search_row or {}).get("search_tagids", [])]
     spy_tags = (spy or {}).get("tags") or {}
 
@@ -126,7 +111,7 @@ def build_row(details, target, spy, search_row, tag_names):
         "release_year": release.year if release else None,
         "release_month": release.month if release else None,
         "release_dayofweek": release.weekday() if release else None,
-        # prețul de listă (fără reducerea de moment), în EUR
+        
         "price_eur": 0.0 if d.get("is_free") else price.get("initial", 0) / 100,
         "is_free": int(bool(d.get("is_free"))),
         "has_price_info": int(bool(price) or bool(d.get("is_free"))),
@@ -149,16 +134,16 @@ def build_row(details, target, spy, search_row, tag_names):
         "n_content_descriptors": len((d.get("content_descriptors") or {}).get("ids") or []),
         "is_early_access": int("Early Access" in genres),
         "is_self_published": int(bool(developers) and set(developers) == set(publishers)),
-        "n_steamspy_tags": len(spy_tags),  # doar pentru documentarea acoperirii, nu e feature
+        "n_steamspy_tags": len(spy_tags),  
         "developer": developers[0] if developers else "",
         "publisher": publishers[0] if publishers else "",
         "genres": "|".join(genres),
         "categories": "|".join(categories),
         "tags": "|".join(tags),
         "short_description": strip_html(d.get("short_description")),
-        # ținta (target_source spune de unde vine: reviews_api sau search_summary)
+        
         **{k: v for k, v in target.items() if k != "measured_on"},
-        # vârsta jocului când i-am măsurat recenziile; NU e feature, doar pentru controlul stabilității țintei
+        
         "game_age_days": (target["measured_on"] - release.date()).days
                          if release and target["measured_on"] else None,
     }
@@ -177,12 +162,7 @@ def add_one_hot(df, column, prefix, min_share=None, top_n=None):
 
 
 def add_developer_history(df, developers):
-    """Istoricul dezvoltatorului pe tot Steam-ul (din developers.jsonl), folosind DOAR jocurile
-    lansate înaintea jocului curent, adică ce se știa deja în ziua lansării:
-    - dev_prior_games: câte jocuri lansase înainte
-    - dev_prior_rated_games: câte dintre ele au scor afișat (Steam îl arată de la 10 recenzii)
-    - dev_prior_mean_score: media scorurilor lor (0-1); lipsă -> media coloanei + flag
-    - dev_has_track_record: 1 dacă există cel puțin un joc anterior cu scor"""
+    
     prior_games, prior_rated, prior_score = [], [], []
     for _, row in df.iterrows():
         games = developers.get(row["developer"], [])
@@ -201,13 +181,20 @@ def add_developer_history(df, developers):
 
 
 def main():
-    details = {r["appid"]: r for r in read_jsonl(APPDETAILS) if r.get("success")}
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--skip", type=int, default=0)
+    parser.add_argument("--max-games", type=int, default=None)
+    parser.add_argument("--out", type=Path, default=CLEAN_CSV)
+    args = parser.parse_args()
+
+    
+    details = {r["appid"]: r for r in list(read_jsonl(APPDETAILS))[args.skip:] if r.get("success")}
     reviews = {r["appid"]: r for r in read_jsonl(REVIEWS) if r.get("success")}
     spy = {r["appid"]: r for r in read_jsonl(STEAMSPY)}
     search = {r["appid"]: r for r in read_jsonl(SEARCH_INDEX)}
     tag_names = json.loads(TAG_NAMES.read_text(encoding="utf-8")) if TAG_NAMES.exists() else {}
     developers = {r["developer"]: r["games"] for r in read_jsonl(DEVELOPERS) if r.get("success")}
-    # Rândurile vechi din search_index nu au fetched_at; pentru ele, data căutării = data ultimei scrieri în fișier
+    
     search_date = datetime.fromtimestamp(SEARCH_INDEX.stat().st_mtime).date() if SEARCH_INDEX.exists() else None
     print(f"appdetails={len(details)}  reviews={len(reviews)}  steamspy={len(spy)}  search={len(search)}")
 
@@ -221,8 +208,7 @@ def main():
             dropped["no_reviews"] += 1
             continue
         row = build_row(det, target, spy.get(appid), search.get(appid), tag_names)
-        # Vârsta se măsoară la momentul descărcării recenziilor, nu față de azi:
-        # contează câte zile avusese jocul ca să-și stabilizeze scorul când l-am măsurat.
+        
         if (not row["release_date"] or row["release_date"] < RELEASE_START.isoformat()
                 or row["game_age_days"] < MIN_AGE_DAYS):
             dropped["out_of_window"] += 1
@@ -231,6 +217,8 @@ def main():
             dropped["no_reviews"] += 1
             continue
         rows.append(row)
+        if args.max_games and len(rows) >= args.max_games:
+            break
     print(f"Eliminate: {dropped}")
 
     df = pd.DataFrame(rows)
@@ -239,14 +227,11 @@ def main():
     df = add_one_hot(df, "genres", "genre", min_share=MIN_GENRE_SHARE)
     df = add_one_hot(df, "categories", "cat", min_share=MIN_CATEGORY_SHARE)
     df = add_one_hot(df, "tags", "tag", top_n=TOP_TAGS)
-    # 0.80 = pragul Steam pentru „Very Positive”. Fișa cerea și total_reviews >= 50, dar asta ar fi făcut
-    # eticheta să depindă și de popularitate (un joc bine primit cu 30 de recenzii ar fi fost „eșec”),
-    # deci am fi amestecat două întrebări. Filtrul de recenzii se aplică deja la nivel de set.
     df["is_successful"] = (df["positive_ratio"] >= 0.80).astype(int)
 
-    FINAL_DIR.mkdir(parents=True, exist_ok=True)
-    df.to_csv(CLEAN_CSV, index=False, encoding="utf-8")
-    print(f"Salvat {CLEAN_CSV}: {df.shape[0]} jocuri x {df.shape[1]} coloane")
+    args.out.parent.mkdir(parents=True, exist_ok=True)
+    df.to_csv(args.out, index=False, encoding="utf-8")
+    print(f"Salvat {args.out}: {df.shape[0]} jocuri x {df.shape[1]} coloane")
 
 
 if __name__ == "__main__":

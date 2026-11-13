@@ -1,18 +1,3 @@
-"""Pasul 2: descărcarea detaliilor pentru fiecare joc din fereastra studiată.
-
-Trei etape independente, fiecare cu fișierul ei .jsonl și reluabilă după întrerupere
-(jocurile deja descărcate sunt sărite). Pentru că lovesc servere/limite diferite,
-etapele pot rula în paralel, în terminale separate:
-
-    python extraction/crawl_steam.py --stage details    # Store API  -> appdetails.jsonl
-    python extraction/crawl_steam.py --stage reviews    # Reviews API -> reviews.jsonl (ținta)
-    python extraction/crawl_steam.py --stage steamspy   # SteamSpy    -> steamspy.jsonl (tag-uri)
-
-După `details` (are nevoie de numele dezvoltatorilor):
-    python extraction/crawl_steam.py --stage developers # căutare Store -> developers.jsonl (istoric)
-
-Opțional: --limit N  (descarcă cel mult N jocuri noi în această rulare)
-"""
 import argparse
 import random
 from datetime import datetime, timezone
@@ -23,17 +8,14 @@ from config import (APPDETAILS, COUNTRY, DELAY_REVIEWS, DELAY_SEARCH, DELAY_STEA
 from get_app_list import ROW_RE, parse_row
 from http_utils import append_jsonl, done_ids, get_json, read_jsonl, redirects_away
 
-# Câmpuri mari din appdetails de care nu avem nevoie (economisesc spațiu pe disc)
+
 DROP_FIELDS = {"pc_requirements", "mac_requirements", "linux_requirements", "background",
                "background_raw", "legal_notice", "package_groups", "support_info",
                "capsule_image", "capsule_imagev5", "header_image",
-               "about_the_game"}  # aproape mereu identic cu detailed_description
+               "about_the_game"}  
 
 
 def candidates():
-    """Jocurile din search_index cu dată în fereastră și destule recenzii, în ordine aleatoare fixă.
-    Amestecăm TOATE jocurile de după RELEASE_START și abia apoi aplicăm RELEASE_END: așa, dacă
-    pragul de final se schimbă, ordinea jocurilor rămase nu se schimbă."""
     rows = {r["appid"]: r for r in read_jsonl(SEARCH_INDEX)
             if r["release_date"] and r["release_date"] >= RELEASE_START.isoformat()
             and r["search_review_count"] >= MIN_REVIEWS_CRAWL}
@@ -53,7 +35,7 @@ def fetch_details(appid):
     if not entry.get("success"):
         return {"appid": appid, "success": False, "fetched_at": now()}
     details = {k: v for k, v in entry["data"].items() if k not in DROP_FIELDS}
-    # Păstrăm doar numărul de screenshot-uri/trailere, nu URL-urile
+    
     details["n_screenshots"] = len(details.pop("screenshots", []) or [])
     details["n_movies"] = len(details.pop("movies", []) or [])
     return {"appid": appid, "success": True, "fetched_at": now(), "data": details}
@@ -75,14 +57,12 @@ def fetch_steamspy(appid):
         return {"appid": appid, "success": False, "fetched_at": now()}
     tags = data.get("tags") or {}
     return {"appid": appid, "success": True, "fetched_at": now(),
-            # SteamSpy întoarce [] în loc de {} când nu sunt tag-uri
+            
             "tags": tags if isinstance(tags, dict) else {},
             "developer": data.get("developer"), "publisher": data.get("publisher")}
 
 
 def fetch_developer(developer):
-    """Toate jocurile dezvoltatorului (inclusiv cele dinainte de 2024), cu data și scorul lor,
-    din căutarea Store filtrată după dezvoltator."""
     games = []
     for start in range(0, 500, 100):
         data = get_json("https://store.steampowered.com/search/results/", params={

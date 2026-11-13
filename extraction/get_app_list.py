@@ -1,14 +1,3 @@
-"""Pasul 1: lista jocurilor lansate în fereastra studiată.
-
-În loc să descărcăm lista completă de ~200.000 de aplicații Steam și să cerem
-appdetails pentru fiecare (zile întregi de crawl), folosim căutarea din magazin:
-filtrată pe tipul „Games” (category1=998) și sortată după data lansării, descendent.
-Un singur request întoarce 100 de jocuri cu appid, nume, dată de lansare, sumarul
-recenziilor și tag-urile principale. Ne oprim când trecem de RELEASE_START.
-
-Rezultat: data/raw/search_index.jsonl (câte o linie per joc).
-Rulare:  python extraction/get_app_list.py
-"""
 import html
 import json
 import re
@@ -21,7 +10,7 @@ from http_utils import append_jsonl, get_json, read_jsonl
 SEARCH_URL = "https://store.steampowered.com/search/results/"
 PAGE_SIZE = 100
 STATE_FILE = RAW_DIR / "search_state.json"
-# Ordinea căutării nu e perfect strictă, așa că ne oprim abia după multe jocuri la rând mai vechi
+
 STOP_AFTER_OLD = 500
 
 ROW_RE = re.compile(r'<a href="https://store\.steampowered\.com/(?:app|bundle|sub)/.*?</a>', re.S)
@@ -38,13 +27,13 @@ def parse_date(text):
             return datetime.strptime(text, fmt).date()
         except ValueError:
             pass
-    return None  # „Coming soon”, „Q3 2026”, „To be announced” etc.
+    return None  
 
 
 def parse_row(block):
     appid = APPID_RE.search(block)
     if not appid or "," in appid.group(1):
-        return None  # pachete/bundle-uri cu mai multe appid-uri
+        return None  
     title = TITLE_RE.search(block)
     released = RELEASED_RE.search(block)
     release_text = html.unescape(released.group(1)).strip() if released else ""
@@ -63,7 +52,6 @@ def parse_row(block):
 
 
 def save_tag_names():
-    """Căutarea dă doar ID-urile tag-urilor; numele lor vin din lista de tag-uri populare."""
     tags = get_json("https://store.steampowered.com/tagdata/populartags/english", delay=DELAY_SEARCH)
     if tags:
         TAG_NAMES.write_text(json.dumps({t["tagid"]: t["name"] for t in tags}, ensure_ascii=False, indent=1),
@@ -97,7 +85,7 @@ def main():
                 state["old_streak"] = 0
             if row["appid"] not in seen:
                 seen.add(row["appid"])
-                # momentul descărcării: sumarul recenziilor de aici e și ținta (preprocess.py)
+                
                 row["fetched_at"] = datetime.now(timezone.utc).isoformat(timespec="seconds")
                 append_jsonl(SEARCH_INDEX, row)
                 new += 1

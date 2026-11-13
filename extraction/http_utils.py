@@ -1,4 +1,3 @@
-"""Utilitare HTTP și I/O: request-uri politicoase cu reîncercare și fișiere JSONL reluabile."""
 import json
 import time
 from pathlib import Path
@@ -12,8 +11,6 @@ _session.headers.update({"User-Agent": USER_AGENT})
 
 
 def get_json(url, params=None, delay=1.0, max_retries=5):
-    """GET care întoarce JSON. Așteaptă `delay` secunde după fiecare request și,
-    la erori (429 = prea multe request-uri, 5xx, timeout), reîncearcă cu pauză exponențială."""
     wait = 10
     for attempt in range(1, max_retries + 1):
         try:
@@ -34,9 +31,6 @@ def get_json(url, params=None, delay=1.0, max_retries=5):
 
 
 def redirects_away(url, params=None):
-    """True dacă endpoint-ul răspunde cu o redirecționare (3xx). Steam trimite la prima pagină a
-    magazinului endpoint-urile pe care nu le mai servește (așa s-a întâmplat cu /appreviews în nov. 2026);
-    fără verificarea asta, get_json ar reîncerca minute întregi pentru fiecare joc."""
     try:
         r = _session.get(url, params=params, timeout=30, allow_redirects=False)
         return 300 <= r.status_code < 400
@@ -55,7 +49,7 @@ def read_jsonl(path: Path):
                 try:
                     rows.append(json.loads(line))
                 except json.JSONDecodeError:
-                    pass  # linie trunchiată de o oprire bruscă
+                    pass  
     return rows
 
 
@@ -66,5 +60,4 @@ def append_jsonl(path: Path, obj):
 
 
 def done_ids(path: Path):
-    """ID-urile deja descărcate: permit reluarea crawl-ului după o întrerupere."""
     return {row["appid"] for row in read_jsonl(path)}
